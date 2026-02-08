@@ -1,5 +1,12 @@
 # Ogur.Clicker
 
+[![wakatime](https://wakatime.com/badge/github/ishkabar/ogur-clicker.svg?style=flat-square)](https://wakatime.com/badge/github/ishkabar/ogur-clicker)
+![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)
+![C#](https://img.shields.io/badge/C%23-12.0-239120?style=flat-square&logo=csharp)
+![WPF](https://img.shields.io/badge/WPF-Windows-7B68EE?style=flat-square)
+![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat-square&logo=windows)
+
+
 A high-precision Windows desktop application for automated mouse clicking with customizable hotkeys and multiple input methods.
 
 ## Features
