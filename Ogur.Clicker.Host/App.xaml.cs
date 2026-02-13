@@ -60,7 +60,7 @@ public partial class App : Application
             })
             .Build();
 
-        var expirationDate = new DateTime(2025, 12, 12);
+        var expirationDate = new DateTime(2026, 10, 10);
         if (DateTime.Now > expirationDate)
         {
             SystemSounds.Hand.Play();
