@@ -1,14 +1,18 @@
-﻿<Window x:Class="Ogur.Clicker.Host.Views.MainWindow"
+﻿<!-- Ogur.Clicker.Host/Views/MainWindow.xaml -->
+<Window x:Class="Ogur.Clicker.Host.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:converters="clr-namespace:Ogur.Clicker.Host.Converters"
-        ResizeMode="NoResize"
-        Title="Mouse Clicker" Height="550" Width="500"
+        ResizeMode="CanResize"
+        Title="Hotbar Clicker" Height="700" Width="900"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E">
+        Background="#1E1E1E"
+        MinWidth="800" MinHeight="600">
 
     <Window.Resources>
         <converters:InverseBooleanConverter x:Key="InverseBoolConverter" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:EnumToDisplayConverter x:Key="EnumToDisplayConverter" />
 
         <!-- Card Style -->
         <Style x:Key="Card" TargetType="Border">
@@ -112,39 +116,6 @@
             </Setter>
         </Style>
 
-        <!-- GroupBox Style -->
-        <Style TargetType="GroupBox">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="GroupBox">
-                        <Border Background="#2D2D30"
-                                BorderBrush="#3F3F46"
-                                BorderThickness="1"
-                                CornerRadius="8">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-
-                                <Border Background="#007ACC"
-                                        CornerRadius="8,8,0,0"
-                                        Padding="12,8">
-                                    <ContentPresenter ContentSource="Header"
-                                                      TextElement.Foreground="White"
-                                                      TextElement.FontWeight="SemiBold"
-                                                      TextElement.FontSize="14" />
-                                </Border>
-
-                                <ContentPresenter Grid.Row="1" Margin="12" />
-                            </Grid>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- Button Style -->
         <Style TargetType="Button">
             <Setter Property="Background" Value="#007ACC" />
@@ -152,6 +123,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,8" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -174,6 +146,12 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Small Button -->
+        <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11" />
         </Style>
 
         <!-- TextBox Style -->
@@ -270,26 +248,76 @@
 
         <Style TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Background" Value="#252526" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
                         <Border Background="{TemplateBinding Background}"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
+                            <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter Property="Background" Value="#007ACC" />
+                                <Setter Property="Foreground" Value="White" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Background" Value="#094771" />
+                                <Setter Property="Foreground" Value="White" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- DataGrid Style -->
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#3F3F46" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#3F3F46" />
+            <Setter Property="RowBackground" Value="#2D2D30" />
+            <Setter Property="AlternatingRowBackground" Value="#252526" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="SelectionUnit" Value="FullRow" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#007ACC" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="BorderBrush" Value="#3F3F46" />
+            <Setter Property="BorderThickness" Value="0,0,1,0" />
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#094771" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -299,155 +327,277 @@
             <RowDefinition Height="12" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+<!-- Title Bar -->
+<Grid Grid.Row="0">
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+    </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0"
-                       Text="Mouse Clicker"
-                       FontSize="26"
-                       FontWeight="Bold"
+    <TextBlock Grid.Column="0"
+               Text="Hotbar Clicker"
+               FontSize="26"
+               FontWeight="Bold"
+               Foreground="White"
+               VerticalAlignment="Center" />
+
+    <!-- Process Name Display -->
+    <Border Grid.Column="1"
+            Background="#2D2D30"
+            BorderBrush="#555"
+            BorderThickness="1"
+            CornerRadius="2"
+            Padding="8,0"
+            Height="30"
+            Margin="0,0,10,0"
+            VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Process: "
+                       Foreground="#999"
+                       FontSize="11"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding TargetProcessName}"
                        Foreground="White"
-                       VerticalAlignment="Center" />
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
 
-            <!-- Pin Button (Always on Top Toggle) -->
-            <!-- Always on Top Toggle -->
-            <CheckBox Grid.Column="1"
-                      Content="Always on top"
-                      IsChecked="{Binding IsAlwaysOnTop}"
-                      Foreground="White"
-                      FontSize="12"
-                      VerticalAlignment="Center"
-                      Style="{StaticResource iOSToggleSwitch}" />
-        </Grid>
+    <Button Grid.Column="2"
+            Content="🎯 Select Process"
+            Command="{Binding SetTargetProcessCommand}"
+            Width="120"
+            Height="30"
+            Margin="0,0,10,0"
+            VerticalAlignment="Center"
+            Background="#3C3C3C"
+            Foreground="White"
+            BorderThickness="1"
+            BorderBrush="#555"
+            Cursor="Hand"
+            FontSize="12"/>
 
-        <!-- Click Configuration -->
-        <GroupBox Grid.Row="2" Header="Click Configuration">
-            <Grid Margin="0,8,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+    <Button Grid.Column="3"
+            Content="📱 Portable"
+            Command="{Binding SwitchToPortableViewCommand}"
+            Width="100"
+            Height="30"
+            Margin="0,0,10,0"
+            VerticalAlignment="Center"
+            Background="#007ACC"
+            Foreground="White"
+            BorderThickness="0"
+            Cursor="Hand"
+            FontSize="12"/>
 
+    <CheckBox Grid.Column="4"
+              Content="Always on top"
+              IsChecked="{Binding IsAlwaysOnTop}"
+              Foreground="White"
+              FontSize="12"
+              VerticalAlignment="Center"
+              Style="{StaticResource iOSToggleSwitch}" />
+</Grid>
+
+        <!-- Profile & Settings -->
+        <Border Grid.Row="2" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="Input Method:"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0" />
+
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding InputMethods}"
+                          SelectedItem="{Binding SelectedInputMethod}"
+                          MinWidth="180">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource EnumToDisplayConverter}}"
+                                       Foreground="White"
+                                       Padding="4,2" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <Button Grid.Column="2"
+                        Content="Load Profile"
+                        Command="{Binding LoadProfileCommand}" />
+
+                <Button Grid.Column="4"
+                        Content="Save Profile"
+                        Command="{Binding SaveProfileCommand}" />
+
+                <Button Grid.Column="6"
+                        Content="+ Add Slot"
+                        Command="{Binding AddSlotCommand}" />
+            </Grid>
+        </Border>
+
+       <!-- Slots DataGrid -->
+<DataGrid Grid.Row="4"
+          ItemsSource="{Binding Slots}"
+          SelectedItem="{Binding SelectedSlot}">
+    <DataGrid.Columns>
+        <DataGridTextColumn Header="#"
+                            Binding="{Binding SlotNumber}"
+                            Width="40"
+                            IsReadOnly="True" />
+
+        <DataGridTextColumn Header="Key"
+                            Binding="{Binding KeyName}"
+                            Width="60"
+                            IsReadOnly="True" />
+
+        <DataGridTextColumn Header="Trigger"
+                            Binding="{Binding TriggerDisplay}"
+                            Width="150"
+                            IsReadOnly="True" />
+
+        <DataGridTextColumn Header="Presses"
+                            Binding="{Binding PressCount}"
+                            Width="80" />
+
+        <DataGridTextColumn Header="Delay (ms)"
+                            Binding="{Binding DelayMs}"
+                            Width="90" />
+
+        <DataGridCheckBoxColumn Header="✓"
+                                Binding="{Binding IsEnabled}"
+                                Width="40" />
+
+        <!-- Status Column -->
+        <DataGridTemplateColumn Header="Status" Width="60">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <Ellipse Width="12" Height="12"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             ToolTip="{Binding StatusTooltip}">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#555"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ExecutionStatus}" Value="Ready">
+                                        <Setter Property="Fill" Value="#00FF00"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ExecutionStatus}" Value="Executing">
+                                        <Setter Property="Fill" Value="#FF0000"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ExecutionStatus}" Value="NoFocus">
+                                        <Setter Property="Fill" Value="#555"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn Header="Move" Width="70">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="▲"
+                                Command="{Binding MoveUpCommand}"
+                                Style="{StaticResource SmallButton}"
+                                Width="24" Margin="2,0" />
+                        <Button Content="▼"
+                                Command="{Binding MoveDownCommand}"
+                                Style="{StaticResource SmallButton}"
+                                Width="24" Margin="2,0" />
+                    </StackPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn Header="Actions" Width="120">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="✎"
+                                Command="{Binding EditCommand}"
+                                Style="{StaticResource SmallButton}"
+                                Width="32" Margin="2,0"
+                                ToolTip="Edit / Select" />
+                        <Button Content="✕"
+                                Command="{Binding RemoveCommand}"
+                                Style="{StaticResource SmallButton}"
+                                Width="32" Margin="2,0"
+                                Background="#C42B1C"
+                                ToolTip="Remove" />
+                    </StackPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+    </DataGrid.Columns>
+</DataGrid>
+
+        <!-- Selected Slot Editor -->
+        <Border Grid.Row="6"
+                Style="{StaticResource Card}"
+                Visibility="{Binding SelectedSlot, Converter={StaticResource NullToVisibilityConverter}}">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Row 1: Button Selection -->
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="Mouse Button:"
-                           VerticalAlignment="Center"
-                           Margin="0,0,12,0"
-                           Foreground="White" />
-                <ComboBox Grid.Row="0" Grid.Column="1"
-                          ItemsSource="{Binding MouseButtons}"
-                          SelectedItem="{Binding SelectedButton}"
-                          Width="160"
-                          HorizontalAlignment="Left" />
-                <Button Grid.Row="0" Grid.Column="2"
-                        Content="Capture Position"
-                        Command="{Binding CapturePositionCommand}"
-                        Padding="16,8"
-                        Width="130"
-                        IsEnabled="{Binding IsCapturing, Converter={StaticResource InverseBoolConverter}}" />
-
-                <!-- Row 2: Position -->
-                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                            Orientation="Horizontal">
-                    <TextBlock Text="Click Position:"
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Selected Slot:"
+                               Foreground="White"
+                               FontWeight="SemiBold"
                                VerticalAlignment="Center"
-                               Margin="0,0,12,0"
-                               Foreground="White" />
-                    <TextBlock Text="X:"
+                               Margin="0,0,12,0" />
+                    <TextBlock Text="{Binding SelectedSlot.SlotNumber}"
+                               Foreground="#007ACC"
+                               FontWeight="Bold"
+                               FontSize="16"
                                VerticalAlignment="Center"
-                               Margin="12,0,8,0"
-                               Foreground="White" />
-                    <TextBox Text="{Binding ClickX, UpdateSourceTrigger=PropertyChanged}"
-                             Width="80" />
-                    <TextBlock Text="Y:"
-                               VerticalAlignment="Center"
-                               Margin="16,0,8,0"
-                               Foreground="White" />
-                    <TextBox Text="{Binding ClickY, UpdateSourceTrigger=PropertyChanged}"
-                             Width="80" />
+                               Margin="0,0,12,0" />
+                    <TextBlock Text="{Binding SelectedSlot.KeyName}"
+                               Foreground="White"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
                 </StackPanel>
 
-
-            </Grid>
-        </GroupBox>
-
-        <!-- Hotkey Configuration -->
-        <GroupBox Grid.Row="4" Header="Hotkey Configuration">
-            <Grid Margin="0,8,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Row 1: Input Method -->
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="Input Method:"
-                           VerticalAlignment="Center"
-                           Foreground="White" />
-                <ComboBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
-                          ItemsSource="{Binding InputMethods}"
-                          SelectedItem="{Binding SelectedMethod}"
-                          HorizontalAlignment="Stretch"
-                          Margin="0,0,0,0" />
-
-                <!-- Row 2: Trigger Key -->
-                <TextBlock Grid.Row="2" Grid.Column="0"
-                           Text="Trigger Key:"
-                           VerticalAlignment="Center"
-                           Foreground="White" />
-                <TextBox Grid.Row="2" Grid.Column="1"
-                         Text="{Binding HotkeyDisplay, Mode=OneWay}"
-                         IsReadOnly="True"
-                         HorizontalAlignment="Stretch"
-                         Margin="0,0,12,0" />
-                <Button Grid.Row="2" Grid.Column="2"
-                        Content="Capture Key"
+                <Button Grid.Column="2"
+                        Content="Capture Hotkey"
                         Command="{Binding CaptureHotkeyCommand}"
-                        Padding="16,8"
-                        IsEnabled="{Binding IsCapturingHotkey, Converter={StaticResource InverseBoolConverter}}" />
-
-                <!-- Row 3: Return to Position -->
-                <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
-                          Content="Return cursor to original position"
-                          IsChecked="{Binding ReturnToOriginalPosition}"
-                          Foreground="White"
-                          Style="{StaticResource iOSToggleSwitch}" />
+                        IsEnabled="{Binding IsCapturingHotkey, Converter={StaticResource InverseBoolConverter}}"
+                        Padding="16,8" />
             </Grid>
-        </GroupBox>
+        </Border>
 
         <!-- Status -->
-        <Border Grid.Row="7"
-                Style="{StaticResource Card}">
+        <Border Grid.Row="8" Style="{StaticResource Card}">
             <TextBlock Text="{Binding StatusMessage}"
                        Foreground="#999999"
                        FontStyle="Italic" />
         </Border>
     </Grid>
-
 </Window>

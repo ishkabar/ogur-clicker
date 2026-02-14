@@ -1,14 +1,14 @@
-﻿using System.Windows;
+﻿// Ogur.Clicker.Host/App.xaml.cs
+using System.IO;
+using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Ogur.Clicker.Core;
+using Ogur.Clicker.Core.Services;
 using Ogur.Clicker.Infrastructure.Services;
 using Ogur.Clicker.Host.ViewModels;
 using Ogur.Clicker.Host.Views;
-using Ogur.Clicker.Core.Services;
 using System.Media;
-
 
 namespace Ogur.Clicker.Host;
 
@@ -19,7 +19,7 @@ public partial class App : Application
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
-    // Setup unhandled exception handlers
+        // Setup unhandled exception handlers
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -40,13 +40,25 @@ public partial class App : Application
         Host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .ConfigureServices((context, services) =>
             {
-                // Services
+                // Mouse Services (old)
                 services.AddSingleton<IMouseService, MouseService>();
-                services.AddSingleton<IMouseHookService, MouseHookService>();
-                services.AddSingleton<IKeyboardHookService, KeyboardHookService>();
                 services.AddSingleton<IPositionCaptureService, PositionCaptureService>();
                 services.AddSingleton<IGlobalMouseHotkeyService, GlobalMouseHotkeyService>();
+
+                // Keyboard Services (new)
+                services.AddSingleton<IKeyboardService, KeyboardService>();
+
+                // Hook Services
+                services.AddSingleton<IMouseHookService, MouseHookService>();
+                services.AddSingleton<IKeyboardHookService, KeyboardHookService>();
+
+                // Hotkey Services
                 services.AddSingleton<IGlobalKeyboardHotkeyService, GlobalKeyboardHotkeyService>();
+                services.AddSingleton<IMultiHotkeyService, MultiHotkeyService>();
+
+                // Hotbar Service
+                services.AddSingleton<IHotbarService, HotbarService>();
+                services.AddSingleton<IGameFocusService, GameFocusService>();
 
                 // ViewModels
                 services.AddTransient<LoginViewModel>();
@@ -73,10 +85,49 @@ public partial class App : Application
             var loginWindow = Host.Services.GetRequiredService<LoginWindow>();
             MainWindow = loginWindow;
             loginWindow.Show();
+
+            // Auto-load last profile after login window shows main window
+            TryAutoLoadProfile();
         }
     }
-    
-        private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+
+    private void TryAutoLoadProfile()
+    {
+        try
+        {
+            var lastProfilePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OgurClicker",
+                "last_profile.json"
+            );
+
+            if (File.Exists(lastProfilePath))
+            {
+                var hotbarService = Host?.Services.GetRequiredService<IHotbarService>();
+                if (hotbarService != null)
+                {
+                    var profile = hotbarService.LoadProfileFromFile(lastProfilePath);
+                    hotbarService.LoadProfile(profile);
+
+                    // Find MainWindow and update its ViewModel
+                    var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+                    if (mainWindow?.DataContext is MainViewModel viewModel)
+                    {
+                        viewModel.IsAlwaysOnTop = profile.AlwaysOnTop;
+                        viewModel.FocusCheckIntervalMs = profile.FocusCheckIntervalMs;
+                        viewModel.TargetProcessName = profile.TargetProcessName ?? "Not set";
+                        viewModel.TargetProcessId = profile.TargetProcessId;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors on auto-load
+        }
+    }
+
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         Environment.Exit(1);
     }
@@ -111,6 +162,14 @@ public partial class App : Application
             {
                 keyboardHook.StopListening();
                 (keyboardHook as IDisposable)?.Dispose();
+            }
+
+            // Cleanup multi-hotkey service
+            var multiHotkey = Host?.Services.GetService<IMultiHotkeyService>();
+            if (multiHotkey != null)
+            {
+                // MultiHotkeyService doesn't need explicit cleanup
+                // Hotkeys are unregistered in MainWindow.OnClosing
             }
         }
         catch { }

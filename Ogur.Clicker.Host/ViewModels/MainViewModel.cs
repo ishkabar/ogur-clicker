@@ -1,91 +1,127 @@
-﻿using System.Windows;
+﻿// Ogur.Clicker.Host/ViewModels/MainViewModel.cs
+using System.Collections.ObjectModel;
+using System.Windows;
+using System.IO;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Threading;
+using Microsoft.Win32;
+using Ogur.Clicker.Host.Views;
 using Ogur.Clicker.Core.Models;
 using Ogur.Clicker.Core.Services;
 using Ogur.Clicker.Host.Commands;
-using MouseButton = Ogur.Clicker.Core.Models.MouseButton;
+using Ogur.Clicker.Infrastructure.Services;
 
 namespace Ogur.Clicker.Host.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    private readonly IMouseService _mouseService;
-    private readonly IPositionCaptureService _positionCaptureService;
-    private readonly IGlobalMouseHotkeyService _mouseHotkeyService;
-    private readonly IGlobalKeyboardHotkeyService _keyboardHotkeyService;
+    private readonly IHotbarService _hotbarService;
+    private readonly IMultiHotkeyService _multiHotkeyService;
+    private readonly IKeyboardHookService _keyboardHookService;
+    private readonly IMouseHookService _mouseHookService;
 
-    private int _clickX;
-    private int _clickY;
-    private MouseButton _selectedButton = MouseButton.Left;
-    private MouseInputMethod _selectedMethod = MouseInputMethod.SendInput;
     private string _statusMessage = "Ready";
-    private string _hotkeyDisplay = "Not set";
-    private bool _returnToOriginalPosition = false;
     private bool _isAlwaysOnTop = false;
+    private bool _isCapturingHotkey = false;
+    private HotbarSlotViewModel? _selectedSlot;
+    private KeyboardInputMethod _selectedInputMethod = KeyboardInputMethod.SendInput;
+    private readonly IGameFocusService _gameFocusService;
+    private int? _targetProcessId;
+    private string _targetProcessName = "Not set";
+    private readonly DispatcherTimer _focusCheckTimer;
+    private int _focusCheckIntervalMs = 100;
 
 
-    private int _hotkeyVirtualKey;
-    private bool _hotkeyCtrl;
-    private bool _hotkeyAlt;
-    private bool _hotkeyShift;
-    private bool _isHotkeyMouseButton;
+
+    private IntPtr _windowHandle;
+    private bool _ignoreNextCapture = false;
+
 
     public MainViewModel(
-        IMouseService mouseService,
-        IPositionCaptureService positionCaptureService,
-        IGlobalMouseHotkeyService mouseHotkeyService,
-        IGlobalKeyboardHotkeyService keyboardHotkeyService)
+        IHotbarService hotbarService,
+        IMultiHotkeyService multiHotkeyService,
+        IKeyboardHookService keyboardHookService,
+        IMouseHookService mouseHookService,
+        IGameFocusService gameFocusService)
     {
-        _mouseService = mouseService;
-        _positionCaptureService = positionCaptureService;
-        _mouseHotkeyService = mouseHotkeyService;
-        _keyboardHotkeyService = keyboardHotkeyService;
+        _hotbarService = hotbarService;
+        _multiHotkeyService = multiHotkeyService;
+        _keyboardHookService = keyboardHookService;
+        _mouseHookService = mouseHookService;
+        _gameFocusService = gameFocusService;
+
 
         // Subscribe to events
-        _positionCaptureService.PositionCaptured += OnPositionCaptured;
-        _mouseHotkeyService.HotkeyCaptured += OnMouseHotkeyCaptured;
-        _mouseHotkeyService.HotkeyTriggered += OnHotkeyTriggered;
-        _keyboardHotkeyService.HotkeyCaptured += OnKeyboardHotkeyCaptured;
-        _keyboardHotkeyService.HotkeyTriggered += OnHotkeyTriggered;
+        _hotbarService.SlotTriggered += OnSlotTriggered;
+        _keyboardHookService.KeyPressed += OnKeyPressed;
+        _mouseHookService.MouseButtonClicked += OnMouseButtonClicked;
+
+
+
+        // Initialize slots
+        LoadSlots();
 
         // Commands
-        CapturePositionCommand = new RelayCommand(CapturePosition, () => !_positionCaptureService.IsCapturing);
-        CaptureHotkeyCommand = new RelayCommand(CaptureHotkey, () => !IsCapturingHotkey);
-        ExecuteClickCommand = new RelayCommand(ExecuteClick, CanExecuteClick);
-        TestClickCommand = new RelayCommand(TestClick);
+        AddSlotCommand = new RelayCommand(AddSlot);
+        SaveProfileCommand = new RelayCommand(SaveProfile);
+        LoadProfileCommand = new RelayCommand(LoadProfile);
+        CaptureHotkeyCommand = new RelayCommand(CaptureHotkey, () => _selectedSlot != null && !_isCapturingHotkey);
+        RegisterAllHotkeysCommand = new RelayCommand(RegisterAllHotkeys);
+        SwitchToPortableViewCommand = new RelayCommand(SwitchToPortableView);
+        SetTargetProcessCommand = new RelayCommand(SetTargetProcess);
+
+        _focusCheckTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(_focusCheckIntervalMs)
+        };
+        _focusCheckTimer.Tick += FocusCheckTimer_Tick;
+        _focusCheckTimer.Start();
     }
 
     #region Properties
 
-    public int ClickX
+    public ObservableCollection<HotbarSlotViewModel> Slots { get; } = new();
+
+    public HotbarSlotViewModel? SelectedSlot
     {
-        get => _clickX;
-        set => SetProperty(ref _clickX, value);
+        get => _selectedSlot;
+        set
+        {
+            SetProperty(ref _selectedSlot, value);
+            ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
+        }
     }
 
-    public int ClickY
+    private void FocusCheckTimer_Tick(object? sender, EventArgs e)
     {
-        get => _clickY;
-        set => SetProperty(ref _clickY, value);
+        bool hasFocus = _gameFocusService.IsGameFocused();
+
+        foreach (var slot in Slots)
+        {
+            // Nie zmieniaj statusu jak slot jest w trakcie wykonywania
+            if (slot.ExecutionStatus == SlotExecutionStatus.Executing)
+                continue;
+
+            var newStatus = hasFocus ? SlotExecutionStatus.Ready : SlotExecutionStatus.NoFocus;
+
+            if (slot.ExecutionStatus != newStatus)
+            {
+                slot.ExecutionStatus = newStatus;
+            }
+        }
     }
 
-    public MouseButton SelectedButton
+    public int FocusCheckIntervalMs
     {
-        get => _selectedButton;
-        set => SetProperty(ref _selectedButton, value);
-    }
-    
-    public bool ReturnToOriginalPosition
-    {
-        get => _returnToOriginalPosition;
-        set => SetProperty(ref _returnToOriginalPosition, value);
-    }
-
-    public MouseInputMethod SelectedMethod
-    {
-        get => _selectedMethod;
-        set => SetProperty(ref _selectedMethod, value);
+        get => _focusCheckIntervalMs;
+        set
+        {
+            if (SetProperty(ref _focusCheckIntervalMs, value))
+            {
+                _focusCheckTimer.Interval = TimeSpan.FromMilliseconds(value);
+            }
+        }
     }
 
     public string StatusMessage
@@ -94,138 +130,189 @@ public class MainViewModel : ViewModelBase
         set => SetProperty(ref _statusMessage, value);
     }
 
-    public string HotkeyDisplay
-    {
-        get => _hotkeyDisplay;
-        set => SetProperty(ref _hotkeyDisplay, value);
-    }
-
     public bool IsAlwaysOnTop
     {
         get => _isAlwaysOnTop;
         set => SetProperty(ref _isAlwaysOnTop, value);
     }
-    
-    public bool IsCapturingHotkey => _mouseHotkeyService.IsCapturing || _keyboardHotkeyService.IsCapturing;
 
-    public Array MouseButtons => Enum.GetValues(typeof(MouseButton));
-    public Array InputMethods => Enum.GetValues(typeof(MouseInputMethod));
+    public bool IsCapturingHotkey
+    {
+        get => _isCapturingHotkey;
+        set
+        {
+            SetProperty(ref _isCapturingHotkey, value);
+            ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
+        }
+    }
+
+    public KeyboardInputMethod SelectedInputMethod
+    {
+        get => _selectedInputMethod;
+        set
+        {
+            if (SetProperty(ref _selectedInputMethod, value))
+            {
+                _hotbarService.CurrentProfile.InputMethod = value;
+            }
+        }
+    }
+
+    public Array InputMethods => Enum.GetValues(typeof(KeyboardInputMethod));
 
     #endregion
 
     #region Commands
 
-    public ICommand CapturePositionCommand { get; }
+    public ICommand AddSlotCommand { get; }
+    public ICommand SaveProfileCommand { get; }
+    public ICommand LoadProfileCommand { get; }
     public ICommand CaptureHotkeyCommand { get; }
-    public ICommand ExecuteClickCommand { get; }
-    public ICommand TestClickCommand { get; }
+    public ICommand RegisterAllHotkeysCommand { get; }
+    public ICommand SwitchToPortableViewCommand { get; }
+    public ICommand SetTargetProcessCommand { get; }
+
+
 
     #endregion
-#region Event Handlers
 
-    private void OnPositionCaptured(object? sender, System.Drawing.Point point)
+    #region Public Methods
+
+
+    public int? TargetProcessId
+    {
+        get => _targetProcessId;
+        set
+        {
+            if (SetProperty(ref _targetProcessId, value) && value.HasValue)
+            {
+                _gameFocusService.SetTargetProcess(value.Value);
+                TargetProcessName = _gameFocusService.GetTargetProcessName() ?? "Unknown";
+            }
+        }
+    }
+
+    public string TargetProcessName
+    {
+        get => _targetProcessName;
+        set => SetProperty(ref _targetProcessName, value);
+    }
+
+
+    public void SetWindowHandle(IntPtr handle)
+    {
+        _windowHandle = handle;
+        RegisterAllHotkeys();
+    }
+
+    public void OnHotkeyPressed(int hotkeyId)
+    {
+        // This is called from MainWindow WndProc
+        // MultiHotkeyService handles the mapping internally
+        ((MultiHotkeyService)_multiHotkeyService).OnHotkeyPressed(hotkeyId);
+    }
+
+    #endregion
+
+    #region Event Handlers
+
+    private void OnSlotTriggered(object? sender, int slotNumber)
     {
         Application.Current.Dispatcher.Invoke(() =>
         {
-            ClickX = point.X;
-            ClickY = point.Y;
-            StatusMessage = $"Position captured: ({ClickX}, {ClickY})";
-            
-            ((RelayCommand)CapturePositionCommand).RaiseCanExecuteChanged();
-            
+            var slot = Slots.FirstOrDefault(s => s.SlotNumber == slotNumber);
+            if (slot != null)
+            {
+                // Odśwież status
+                slot.OnPropertyChanged(nameof(slot.ExecutionStatus));
+                slot.OnPropertyChanged(nameof(slot.StatusTooltip));
+
+                StatusMessage = $"Triggered slot {slotNumber}: {slot.KeyName} x{slot.PressCount} [{slot.ExecutionStatus}]";
+            }
         });
     }
 
-    private void OnMouseHotkeyCaptured(object? sender, (int virtualKey, bool ctrl, bool alt, bool shift) hotkey)
-{
-    Application.Current.Dispatcher.Invoke(() =>
+
+    private void OnKeyPressed(object? sender, (int virtualKey, bool isCtrl, bool isAlt, bool isShift) e)
     {
-        // Block LMB and RMB
-        if (hotkey.virtualKey == 0x01 || hotkey.virtualKey == 0x02)
+        if (!IsCapturingHotkey || SelectedSlot == null)
+            return;
+
+        // Ignoruj pierwszy event (kliknięcie capture button)
+        if (_ignoreNextCapture)
         {
-            StatusMessage = "LMB/RMB cannot be used as hotkey. Use MB3/MB4/MB5 or keyboard keys.";
-            
-            // Stop capture mode
-            _mouseHotkeyService.StopCapture();
-            _keyboardHotkeyService.StopCapture();
-            ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
+            _ignoreNextCapture = false;
             return;
         }
-        
-        // Unregister keyboard hotkey if was registered
-        if (_keyboardHotkeyService.IsRegistered)
-        {
-            var mainWindow = Application.Current.MainWindow;
-            if (mainWindow != null)
-            {
-                var handle = new WindowInteropHelper(mainWindow).Handle;
-                _keyboardHotkeyService.UnregisterHotkey(handle);
-            }
-        }
-        
-        _hotkeyVirtualKey = hotkey.virtualKey;
-        _hotkeyCtrl = hotkey.ctrl;
-        _hotkeyAlt = hotkey.alt;
-        _hotkeyShift = hotkey.shift;
-        _isHotkeyMouseButton = true;
 
-        UpdateHotkeyDisplay(hotkey.virtualKey, hotkey.ctrl, hotkey.alt, hotkey.shift, true);
-        
-        // Register only mouse hotkey
-        _mouseHotkeyService.RegisterHotkey(hotkey.virtualKey, hotkey.ctrl, hotkey.alt, hotkey.shift);
-        
-        // Stop keyboard capture - not needed anymore
-        _keyboardHotkeyService.StopCapture();
-        
-        StatusMessage = $"Hotkey registered: {HotkeyDisplay}";
-        ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
-        
-    });
-}
-
-    private void OnKeyboardHotkeyCaptured(object? sender, (int virtualKey, bool ctrl, bool alt, bool shift) hotkey)
-    {
         Application.Current.Dispatcher.Invoke(() =>
         {
-            // Unregister mouse hotkey if was registered
-            if (_mouseHotkeyService.IsRegistered)
+            // Block LMB/RMB
+            if (e.virtualKey == 0x01 || e.virtualKey == 0x02)
             {
-                _mouseHotkeyService.UnregisterHotkey();
+                StatusMessage = "LMB/RMB cannot be used as hotkey";
+                StopCapture();
+                return;
             }
-        
-            _hotkeyVirtualKey = hotkey.virtualKey;
-            _hotkeyCtrl = hotkey.ctrl;
-            _hotkeyAlt = hotkey.alt;
-            _hotkeyShift = hotkey.shift;
-            _isHotkeyMouseButton = false;
 
-            UpdateHotkeyDisplay(hotkey.virtualKey, hotkey.ctrl, hotkey.alt, hotkey.shift, false);
+            SelectedSlot.Slot.TriggerVirtualKey = e.virtualKey;
+            SelectedSlot.Slot.TriggerCtrl = e.isCtrl;
+            SelectedSlot.Slot.TriggerAlt = e.isAlt;
+            SelectedSlot.Slot.TriggerShift = e.isShift;
 
-            var mainWindow = Application.Current.MainWindow;
-            
-            if (mainWindow != null)
-            {
-                var handle = new WindowInteropHelper(mainWindow).Handle;
-            
-                bool success = _keyboardHotkeyService.RegisterHotkey(handle, hotkey.virtualKey, hotkey.ctrl, hotkey.alt, hotkey.shift);
-                
-            
-                // Stop mouse capture - not needed anymore
-                _mouseHotkeyService.StopCapture();
-            
-                StatusMessage = success 
-                    ? $"Hotkey registered: {HotkeyDisplay}" 
-                    : "Failed to register hotkey (maybe already in use)";
-            }
-        
-            ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
+            UpdateTriggerDisplay(SelectedSlot, e.virtualKey, e.isCtrl, e.isAlt, e.isShift);
+
+            _hotbarService.UpdateSlot(SelectedSlot.SlotNumber, SelectedSlot.Slot);
+
+            StopCapture();
+            StatusMessage = $"Hotkey set for slot {SelectedSlot.SlotNumber}: {SelectedSlot.TriggerDisplay}";
+
+            // Re-register all hotkeys
+            RegisterAllHotkeys();
         });
     }
-    private void OnHotkeyTriggered(object? sender, EventArgs e)
+
+    private void OnMouseButtonClicked(object? sender, int virtualKey)
     {
+        if (!IsCapturingHotkey || SelectedSlot == null)
+            return;
+
+        // Ignoruj pierwszy event
+        if (_ignoreNextCapture)
+        {
+            _ignoreNextCapture = false;
+            return;
+        }
+
         Application.Current.Dispatcher.Invoke(() =>
         {
-            ExecuteClick();
+            // Block LMB/RMB
+            if (virtualKey == 0x01 || virtualKey == 0x02)
+            {
+                StatusMessage = "LMB/RMB cannot be used as hotkey";
+                StopCapture();
+                return;
+            }
+
+            // Get current modifier keys
+            bool ctrl = (System.Windows.Input.Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            bool alt = (System.Windows.Input.Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+            bool shift = (System.Windows.Input.Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+            SelectedSlot.Slot.TriggerVirtualKey = virtualKey;
+            SelectedSlot.Slot.TriggerCtrl = ctrl;
+            SelectedSlot.Slot.TriggerAlt = alt;
+            SelectedSlot.Slot.TriggerShift = shift;
+
+            UpdateTriggerDisplay(SelectedSlot, virtualKey, ctrl, alt, shift);
+
+            _hotbarService.UpdateSlot(SelectedSlot.SlotNumber, SelectedSlot.Slot);
+
+            StopCapture();
+            StatusMessage = $"Hotkey set for slot {SelectedSlot.SlotNumber}: {SelectedSlot.TriggerDisplay}";
+
+            // Re-register all hotkeys
+            RegisterAllHotkeys();
         });
     }
 
@@ -233,76 +320,225 @@ public class MainViewModel : ViewModelBase
 
     #region Command Implementations
 
-    private void CapturePosition()
+    private void LoadSlots()
     {
-        StatusMessage = "Click anywhere to capture position...";
-        _positionCaptureService.StartCapture();
-        ((RelayCommand)CapturePositionCommand).RaiseCanExecuteChanged();
+        Slots.Clear();
+        foreach (var slot in _hotbarService.CurrentProfile.Slots)
+        {
+            Slots.Add(new HotbarSlotViewModel(slot, EditSlot, RemoveSlot, MoveSlot));
+        }
+    }
+
+    private void AddSlot()
+    {
+        var dialog = new AddSlotDialog();
+        if (dialog.ShowDialog() == true)
+        {
+            var newSlot = new HotbarSlot
+            {
+                VirtualKey = dialog.VirtualKey,
+                KeyName = dialog.KeyName,
+                PressCount = 1,
+                DelayMs = 50,
+                IsEnabled = false
+            };
+
+            _hotbarService.AddSlot(newSlot);
+            Slots.Add(new HotbarSlotViewModel(newSlot, EditSlot, RemoveSlot, MoveSlot));
+            StatusMessage = $"Added slot: {newSlot.KeyName}";
+        }
+    }
+
+    private void EditSlot(HotbarSlotViewModel slotVm)
+    {
+        SelectedSlot = slotVm;
+        StatusMessage = $"Selected slot {slotVm.SlotNumber}: {slotVm.KeyName}";
+    }
+
+    private void RemoveSlot(HotbarSlotViewModel slotVm)
+    {
+        var result = MessageBox.Show(
+            $"Remove slot {slotVm.SlotNumber} ({slotVm.KeyName})?",
+            "Confirm Remove",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            _hotbarService.RemoveSlot(slotVm.SlotNumber);
+            Slots.Remove(slotVm);
+
+            // Refresh slot numbers
+            LoadSlots();
+
+            StatusMessage = $"Removed slot: {slotVm.KeyName}";
+
+            // Re-register hotkeys
+            RegisterAllHotkeys();
+        }
+    }
+
+    private void MoveSlot(HotbarSlotViewModel slotVm, bool moveUp)
+    {
+        int currentIndex = Slots.IndexOf(slotVm);
+        int newIndex = moveUp ? currentIndex - 1 : currentIndex + 1;
+
+        if (newIndex < 0 || newIndex >= Slots.Count)
+            return;
+
+        _hotbarService.MoveSlot(currentIndex, newIndex);
+        LoadSlots();
+        StatusMessage = $"Moved slot {slotVm.KeyName}";
     }
 
     private void CaptureHotkey()
     {
+        if (SelectedSlot == null)
+            return;
+
+        IsCapturingHotkey = true;
+        _ignoreNextCapture = true; // Ignoruj pierwszy event
         StatusMessage = "Press any key or mouse button combination...";
-        _mouseHotkeyService.StartCapture();
-        _keyboardHotkeyService.StartCapture();
-        ((RelayCommand)CaptureHotkeyCommand).RaiseCanExecuteChanged();
+
+        _keyboardHookService.StartListening();
+        _mouseHookService.StartListening();
     }
 
-    private bool CanExecuteClick()
+    private void StopCapture()
     {
-        return ClickX > 0 || ClickY > 0;
+        IsCapturingHotkey = false;
+        _ignoreNextCapture = false; // Reset flag
+        _keyboardHookService.StopListening();
+        _mouseHookService.StopListening();
     }
 
-    private void ExecuteClick()
+    private void SaveProfile()
     {
-        // Save original position if needed
-        System.Drawing.Point? originalPosition = null;
-        if (ReturnToOriginalPosition)
+        var dialog = new SaveFileDialog
         {
-            originalPosition = _mouseService.GetCurrentPosition();
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            DefaultExt = "json",
+            FileName = "hotbar_profile.json"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            // Update profile with current settings before saving
+            _hotbarService.CurrentProfile.AlwaysOnTop = IsAlwaysOnTop;
+            _hotbarService.CurrentProfile.TargetProcessName = TargetProcessName;
+            _hotbarService.CurrentProfile.TargetProcessId = TargetProcessId;
+            _hotbarService.CurrentProfile.FocusCheckIntervalMs = FocusCheckIntervalMs;
+
+            _hotbarService.SaveProfile(dialog.FileName);
+            StatusMessage = $"Profile saved: {dialog.FileName}";
+        }
+    }
+
+    private void LoadProfile()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            DefaultExt = "json"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var profile = _hotbarService.LoadProfileFromFile(dialog.FileName);
+            _hotbarService.LoadProfile(profile);
+
+            // Restore UI settings
+            IsAlwaysOnTop = profile.AlwaysOnTop;
+            FocusCheckIntervalMs = profile.FocusCheckIntervalMs;
+            TargetProcessName = profile.TargetProcessName ?? "Not set";
+            TargetProcessId = profile.TargetProcessId;
+
+            LoadSlots();
+            RegisterAllHotkeys();
+            StatusMessage = $"Profile loaded: {dialog.FileName}";
+        }
+    }
+
+    private void RegisterAllHotkeys()
+    {
+        if (_windowHandle == IntPtr.Zero)
+            return;
+
+        _hotbarService.UnregisterAllHotkeys(_windowHandle);
+        _hotbarService.RegisterAllHotkeys(_windowHandle);
+        StatusMessage = "Hotkeys registered";
+    }
+
+    public void Cleanup(IntPtr windowHandle)
+    {
+        // Auto-save current profile
+        try
+        {
+            var appDataPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OgurClicker"
+            );
+            Directory.CreateDirectory(appDataPath);
+
+            var lastProfilePath = Path.Combine(appDataPath, "last_profile.json");
+
+            _hotbarService.CurrentProfile.AlwaysOnTop = IsAlwaysOnTop;
+            _hotbarService.CurrentProfile.TargetProcessName = TargetProcessName;
+            _hotbarService.CurrentProfile.TargetProcessId = TargetProcessId;
+            _hotbarService.CurrentProfile.FocusCheckIntervalMs = FocusCheckIntervalMs;
+
+            _hotbarService.SaveProfile(lastProfilePath);
+        }
+        catch
+        {
+            // Ignore save errors
         }
 
-        var action = new ClickAction(ClickX, ClickY, SelectedButton);
-        bool success = _mouseService.TryClick(action, SelectedMethod);
-
-        // Return to original position
-        if (ReturnToOriginalPosition && originalPosition.HasValue)
-        {
-            Thread.Sleep(15);
-            
-            _mouseService.SetCursorPosition(originalPosition.Value.X, originalPosition.Value.Y);
-        }
-        
-        StatusMessage = success
-            ? $"Click executed at ({ClickX}, {ClickY})"
-            : $"Click failed at ({ClickX}, {ClickY})";
+        _focusCheckTimer?.Stop();
+        _hotbarService.UnregisterAllHotkeys(windowHandle);
+        _keyboardHookService.StopListening();
+        _mouseHookService.StopListening();
     }
 
-    private void TestClick()
+    private void SwitchToPortableView()
     {
-        var currentPos = _mouseService.GetCurrentPosition();
-        var action = new ClickAction(currentPos.X, currentPos.Y, SelectedButton);
-        bool success = _mouseService.TryClick(action, SelectedMethod);
+        var portableView = new PortableView
+        {
+            DataContext = this
+        };
+        portableView.Show();
 
-        
-
-        StatusMessage = success
-            ? $"Test click successful at ({currentPos.X}, {currentPos.Y})"
-            : "Test click failed";
+        // Ukryj główne okno
+        Application.Current.MainWindow?.Hide();
     }
+
+    private void SetTargetProcess()
+    {
+        var dialog = new ProcessSelectionDialog();
+        if (dialog.ShowDialog() == true)
+        {
+            if (dialog.SelectedProcessId.HasValue)
+            {
+                TargetProcessId = dialog.SelectedProcessId.Value;
+                StatusMessage = $"Target process set: {TargetProcessName} (PID: {TargetProcessId})";
+            }
+        }
+    }
+
 
     #endregion
 
     #region Helpers
 
-    private void UpdateHotkeyDisplay(int virtualKey, bool ctrl, bool alt, bool shift, bool isMouseButton)
+    private void UpdateTriggerDisplay(HotbarSlotViewModel slotVm, int virtualKey, bool ctrl, bool alt, bool shift)
     {
         var display = "";
         if (ctrl) display += "Ctrl+";
         if (alt) display += "Alt+";
         if (shift) display += "Shift+";
 
-        if (isMouseButton)
+        // Check if it's a mouse button
+        if (virtualKey >= 0x01 && virtualKey <= 0x06)
         {
             display += virtualKey switch
             {
@@ -320,7 +556,7 @@ public class MainViewModel : ViewModelBase
             display += key.ToString();
         }
 
-        HotkeyDisplay = display;
+        slotVm.TriggerDisplay = display;
     }
 
     #endregion
