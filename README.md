@@ -6,85 +6,100 @@
 ![WPF](https://img.shields.io/badge/WPF-Windows-7B68EE?style=flat-square)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat-square&logo=windows)
 
-
-A high-precision Windows desktop application for automated mouse clicking with customizable hotkeys and multiple input methods.
+A high-precision Windows automation tool with customizable hotkeys, multi-slot execution, and process-aware focus detection.
 
 ## Features
 
-- **Position Capture**: Click anywhere on screen to capture coordinates
-- **Global Hotkeys**: Register keyboard or mouse button combinations (MB3/MB4/MB5)
-- **Multiple Input Methods**: 
+- **Hotbar System**: Multi-slot keyboard execution with customizable keys and delays
+- **Focus Detection**: Process-aware execution - hotkeys only work when target window is active
+- **Multiple Input Methods**:
   - SendInput (standard)
-  - SendInput Hardware
-  - PostMessage
-  - DirectInput (mouse_event)
-- **Return to Origin**: Optional cursor position restoration after click
-- **Always on Top**: Pin window above other applications
-- **License System**: Built-in expiration date validation
+  - keybd_event (legacy)
+- **Profile Management**: Save/load configurations with auto-restore on startup
+- **Portable View**: Compact overlay window with real-time status indicators
+- **Ogur.Hub Integration**: Authentication and license validation
+- **Always on Top**: Pin windows above other applications
 
 ## Architecture
 ```
 Ogur.Clicker/
-├── Core/              # Domain models and service interfaces
-├── Infrastructure/    # Service implementations (hooks, mouse control)
+├── Core/              # Domain models, services, constants
+├── Infrastructure/    # Service implementations (hooks, keyboard, focus)
 ├── Host/              # WPF UI layer (MVVM)
 ```
 
 ### Core Layer
-- `ClickAction`, `MouseButton`, `MouseInputMethod` - Domain models
-- Service contracts for mouse control, keyboard/mouse hooks, hotkey management
+- `HotbarProfile`, `HotbarSlot` - Domain models with persistence
+- `AppSettings` - Encrypted credential storage (ProtectedData)
+- Service contracts for keyboard control, hooks, hotbar management, focus detection
 
 ### Infrastructure Layer
-- **MouseService**: Win32 API wrappers for clicking (SendInput/PostMessage/mouse_event)
-- **MouseHookService**: Low-level mouse hook (WH_MOUSE_LL)
+- **HotbarService**: Slot management, profile save/load, hotkey orchestration
+- **KeyboardService**: Win32 API wrappers (SendInput/keybd_event)
 - **KeyboardHookService**: Low-level keyboard hook (WH_KEYBOARD_LL)
-- **GlobalMouseHotkeyService**: Mouse button hotkey registration with modifier keys
+- **GameFocusService**: Process focus detection with Windows API (GetForegroundWindow)
 - **GlobalKeyboardHotkeyService**: RegisterHotKey API integration
-- **PositionCaptureService**: One-click coordinate capture
+- **MultiHotkeyService**: Multi-key combination support
 
 ### Host Layer
-- **LoginWindow**: Startup authentication screen
-- **MainWindow**: Primary UI with position/hotkey capture, click execution
-- **LicenseWindow**: Expiration enforcement (Dec 12, 2025)
-- **MainViewModel**: Orchestrates services, manages state, command routing
+- **LoginWindow**: Ogur.Hub authentication with remember me
+- **MainWindow**: Primary UI with slot configuration, focus settings
+- **PortableView**: Compact overlay with status indicators (NoFocus/Ready/Executing)
+- **LicenseWindow**: Expiration enforcement
+- **MainViewModel**: Service orchestration, profile management, command routing
 
 ## Technical Details
 
+### Focus Detection
+- 100ms timer checks if target process has focus
+- Status: `NoFocus` (gray) → `Ready` (green) → `Executing` (red)
+- Hotkeys blocked when target process not focused
+
+### Profile Persistence
+- Auto-save on exit: `%AppData%/OgurClicker/last_profile.json`
+- Auto-load on startup
+- Stores: slots, input method, always-on-top, target process, focus interval
+- Backward compatible with old profiles (property initializers)
+
 ### Hook Management
-- LMB/RMB blocked as hotkeys to prevent interference
+- Automatic cleanup on app exit with forced Environment.Exit(0)
 - `_ignoreNextTrigger` flag prevents double-firing on registration
-- Automatic hook cleanup on app exit with forced Environment.Exit(0)
 
 ### Emergency Exit
 - `Ctrl+Alt+Q` force quits from MainWindow
 - Watchdog timer (30s) monitors UI responsiveness
-
-### Click Execution
-- Configurable delay before click (10ms default)
-- Optional cursor return with 15ms delay
-- Window handle detection for PostMessage method
 
 ## Requirements
 
 - Windows 10/11
 - .NET 8.0
 - Administrator privileges (for global hooks)
+- Ogur.Hub account (authentication required)
 
 ## Usage
 
-1. Launch application
-2. Click "Capture Position" → Click target location
-3. Click "Capture Hotkey" → Press key/mouse button combo
-4. Configure mouse button and input method
-5. Trigger hotkey to execute click
+1. Launch application → Login with Ogur.Hub credentials
+2. Select target process (Process Selection Dialog)
+3. Configure slots: Hotkey → Keys to execute → Delay → Press count
+4. Choose input method (SendInput/keybd_event)
+5. Open Portable View for compact overlay
+6. Trigger hotkeys when target process is focused
 
 ## Configuration
 
-- **Mouse Button**: Left/Right/Middle
-- **Input Method**: SendInput, SendInput Hardware, PostMessage, DirectInput
-- **Return to Original**: Toggle cursor restoration
-- **Always on Top**: Pin window
+- **Input Method**: SendInput, keybd_event
+- **Focus Check Interval**: 100ms default
+- **Target Process**: Set via Process Selection Dialog
+- **Always on Top**: Pin windows
+- **Profile Auto-Save**: Enabled by default
+
+## Code Signing
+
+Self-signed certificate included for distribution:
+- `install-cert.bat` - Installs Ogur Development certificate
+- `sign.bat` - Sign single file (drag & drop)
+- `sign-multiple.bat` - Sign multiple files at once
 
 ## License
 
-Expires: December 12, 2025
+Ogur.Hub license validation - Expires: October 10, 2026
