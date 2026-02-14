@@ -508,8 +508,8 @@ public class MainViewModel : ViewModelBase
         };
         portableView.Show();
 
-        // Ukryj główne okno
-        Application.Current.MainWindow?.Hide();
+        var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+        mainWindow?.Hide();
     }
 
     private void SetTargetProcess()
