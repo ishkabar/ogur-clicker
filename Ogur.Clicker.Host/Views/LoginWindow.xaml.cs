@@ -1,39 +1,55 @@
-﻿using System.Windows;
+﻿// Ogur.Clicker.Host/Views/LoginWindow.xaml.cs
+using System;
+using System.Windows;
 using System.Windows.Input;
-using Microsoft.Extensions.DependencyInjection;
-using Ogur.Clicker.Host.ViewModels;
+using System.Linq;
 using Ogur.Clicker.Host.ViewModels;
 
 namespace Ogur.Clicker.Host.Views;
 
 public partial class LoginWindow : Window
 {
-    public LoginWindow(LoginViewModel viewModel)
+    private readonly LoginViewModel _viewModel;
+    private readonly MainWindow _mainWindow;
+
+
+    public LoginWindow(LoginViewModel viewModel, MainWindow mainWindow)
     {
         InitializeComponent();
-        DataContext = viewModel;
-    }
+        _viewModel = viewModel;
+        DataContext = _viewModel;
 
-    private void ContinueButton_Click(object sender, RoutedEventArgs e)
-    {
-        var app = (App)Application.Current;
-        var mainWindow = app.Host?.Services.GetRequiredService<Views.MainWindow>();
-    
-        if (mainWindow != null)
+        _viewModel.LoginSucceeded += OnLoginSucceeded;
+
+        // Bind password
+        PasswordBox.PasswordChanged += (s, e) =>
         {
-            Application.Current.MainWindow = mainWindow; // DODAJ
-            mainWindow.Show();
-            this.Close();
+            _viewModel.Password = PasswordBox.Password;
+        };
+
+        if (!string.IsNullOrEmpty(_viewModel.Password))
+        {
+            PasswordBox.Password = _viewModel.Password;
         }
     }
-    
-    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+
+    private void PasswordBox_KeyDown(object sender, KeyEventArgs e)
     {
-        this.DragMove();
+        if (e.Key == Key.Enter)
+        {
+            _viewModel.LoginCommand.Execute(null);
+        }
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    private void OnLoginSucceeded(object? sender, EventArgs e)
     {
-        Application.Current.Shutdown();
+        // Show MainWindow
+        var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+        if (mainWindow != null)
+        {
+            mainWindow.Show();
+            Application.Current.MainWindow = _mainWindow; // ✅ Set as main window
+            Close();
+        }
     }
 }

@@ -1,14 +1,21 @@
 ﻿// Ogur.Clicker.Host/App.xaml.cs
+using System;
 using System.IO;
+using System.Linq;
+using System.Media;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Ogur.Core.DependencyInjection;
+using Ogur.Core.Hub;
 using Ogur.Clicker.Core.Services;
+using Ogur.Clicker.Core.Models;
+using Ogur.Clicker.Core.Constants;
 using Ogur.Clicker.Infrastructure.Services;
 using Ogur.Clicker.Host.ViewModels;
 using Ogur.Clicker.Host.Views;
-using System.Media;
 
 namespace Ogur.Clicker.Host;
 
@@ -31,7 +38,6 @@ public partial class App : Application
         };
         _watchdogTimer.Tick += (s, args) =>
         {
-            // If we're here, UI thread is responsive
             _watchdogTimer.Stop();
             _watchdogTimer.Start();
         };
@@ -40,12 +46,25 @@ public partial class App : Application
         Host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .ConfigureServices((context, services) =>
             {
-                // Mouse Services (old)
+                services.AddOgurCore(context.Configuration);
+                services.AddOgurHub(context.Configuration);
+
+                services.PostConfigure<HubOptions>(options =>
+                {
+                    options.HubUrl = "https://api.hub.ogur.dev";
+                    options.ApiKey = HubConstants.ApiKey;
+                    options.ApplicationName = HubConstants.ApplicationName;
+                    options.ApplicationVersion = HubConstants.ApplicationVersion;
+                });
+
+                services.AddSingleton(AppSettings.Load());
+
+                // Mouse Services
                 services.AddSingleton<IMouseService, MouseService>();
                 services.AddSingleton<IPositionCaptureService, PositionCaptureService>();
                 services.AddSingleton<IGlobalMouseHotkeyService, GlobalMouseHotkeyService>();
 
-                // Keyboard Services (new)
+                // Keyboard Services
                 services.AddSingleton<IKeyboardService, KeyboardService>();
 
                 // Hook Services
@@ -67,7 +86,7 @@ public partial class App : Application
 
                 // Windows
                 services.AddTransient<LoginWindow>();
-                services.AddTransient<MainWindow>();
+                services.AddSingleton<MainWindow>();
                 services.AddTransient<LicenseWindow>();
             })
             .Build();
@@ -86,7 +105,6 @@ public partial class App : Application
             MainWindow = loginWindow;
             loginWindow.Show();
 
-            // Auto-load last profile after login window shows main window
             TryAutoLoadProfile();
         }
     }
@@ -109,7 +127,6 @@ public partial class App : Application
                     var profile = hotbarService.LoadProfileFromFile(lastProfilePath);
                     hotbarService.LoadProfile(profile);
 
-                    // Find MainWindow and update its ViewModel
                     var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
                     if (mainWindow?.DataContext is MainViewModel viewModel)
                     {
@@ -121,10 +138,7 @@ public partial class App : Application
                 }
             }
         }
-        catch
-        {
-            // Ignore errors on auto-load
-        }
+        catch { }
     }
 
     private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -146,10 +160,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // Force cleanup hooks
         try
         {
-            // Stop wszystkie hooky PRZED dispose
             var mouseHook = Host?.Services.GetService<IMouseHookService>();
             if (mouseHook != null)
             {
@@ -163,21 +175,11 @@ public partial class App : Application
                 keyboardHook.StopListening();
                 (keyboardHook as IDisposable)?.Dispose();
             }
-
-            // Cleanup multi-hotkey service
-            var multiHotkey = Host?.Services.GetService<IMultiHotkeyService>();
-            if (multiHotkey != null)
-            {
-                // MultiHotkeyService doesn't need explicit cleanup
-                // Hotkeys are unregistered in MainWindow.OnClosing
-            }
         }
         catch { }
 
         Host?.Dispose();
         base.OnExit(e);
-        
-        // Force exit
         Environment.Exit(0);
     }
 }
